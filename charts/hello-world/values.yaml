@@ -23,5 +23,7 @@ serviceAccount:
   name: ""
 
 service:
-  type: ClusterIP
+  type: ClusterIP #LoadBalancer # NodePort # LoadBalancer
   port: 80
+deployEnv: "prod"
+customIndex: true
