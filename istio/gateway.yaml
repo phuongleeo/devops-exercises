@@ -91,13 +91,44 @@ spec:
   http:
   - match:
     - uri:
-        prefix: /status
-    - uri:
-        prefix: /delay
-    - uri:
-        prefix: /get
+        prefix: /
     route:
     - destination:
         port:
           number: 80
         host: httpbin
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: ServiceEntry
+metadata:
+  name: http-ext
+  namespace: default
+spec:
+  hosts:
+  - httpbin.org
+  - hub.docker.org
+  ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: ServiceEntry
+metadata:
+  name: https-ext
+  namespace: default
+spec:
+  hosts:
+  - httpbin.org
+  - hub.docker.org
+  - mirror.freedif.org
+  - archives.jenkins.io
+  - updates.jenkins.io
+  ports:
+  - number: 443
+    name: tls
+    protocol: TLS
+  resolution: DNS
+  location: MESH_EXTERNAL

@@ -622,7 +622,8 @@ controller:
 
   # ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
   # -- Node labels for pod assignment
-  nodeSelector: {}
+  nodeSelector:
+    kubernetes.io/hostname: minikube-m03
 
   # ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#taints-and-tolerations-beta-feature
   # -- Toleration labels for pod assignment
@@ -1193,7 +1194,7 @@ persistence:
   # If undefined (the default) or set to null, no storageClassName spec is
   #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS & OpenStack)
   # -- Storage class for the PVC
-  storageClass:
+  storageClass: standard
   # -- Annotations for the PVC
   annotations: {}
   # -- Labels for the PVC
@@ -1201,7 +1202,7 @@ persistence:
   # -- The PVC access mode
   accessMode: "ReadWriteOnce"
   # -- The size of the PVC
-  size: "8Gi"
+  size: "2Gi"
 
   # ref: https://kubernetes.io/docs/concepts/storage/volume-pvc-datasource/
   # -- Existing data source to clone PVC from
