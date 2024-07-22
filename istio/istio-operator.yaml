@@ -76,6 +76,12 @@ spec:
     accessLogFile: /dev/stdout
     defaultConfig:
       proxyMetadata: {}
+      tracing:
+        sampling: 10
+        custom_tags:
+          my_tag_header:
+            header:
+              name: host
     # outboundTrafficPolicy:
     #   mode: REGISTRY_ONLY
     enableTracing: true
@@ -86,7 +92,7 @@ spec:
         service: opentelemetry-collector.istio-system.svc.cluster.local
       name: otel
   profile: demo
-  tag: 1.15.7
+  tag: 1.21.2
   values:
     base:
       enableCRDTemplates: false
@@ -206,20 +212,20 @@ spec:
       nodeSelector: {}
       podLabels: {}
       replicaCount: 1
-      traceSampling: 1
+      traceSampling: 0.1
     telemetry:
       enabled: true
       v2:
         enabled: true
-        metadataExchange:
-          wasmEnabled: false
-        prometheus:
-          enabled: true
-          wasmEnabled: false
-        stackdriver:
-          configOverride: {}
-          enabled: false
-          logging: false
-          monitoring: false
-          topology: false
+        # metadataExchange:
+        #   wasmEnabled: false
+        # prometheus:
+        #   enabled: true
+        #   wasmEnabled: false
+        # stackdriver:
+        #   configOverride: {}
+        #   enabled: false
+        #   logging: false
+        #   monitoring: false
+        #   topology: false
 
