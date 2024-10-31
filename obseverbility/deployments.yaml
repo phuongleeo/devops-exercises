@@ -1,0 +1,255 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ho11y
+  labels:
+    app: ho11y
+spec:
+  selector:
+    matchLabels:
+      app: ho11y
+  template:
+    metadata:
+      labels:
+        app: ho11y
+    spec:
+      serviceAccountName: ho11y
+      terminationGracePeriodSeconds: 5
+      # securityContext:
+      #   fsGroup: 1000
+      #   runAsGroup: 1000
+      #   runAsNonRoot: true
+      #   runAsUser: 1000
+      containers:
+      - name: ho11y
+        image: public.ecr.aws/mhausenblas/ho11y:stable
+        ports:
+        - containerPort: 8765
+        env:
+        - name: REDIS_ADDR
+          value: "redis-cart:6379"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 128Mi
+        # readinessProbe:
+        #   initialDelaySeconds: 15
+        #   tcpSocket:
+        #     port: 8765
+        # livenessProbe:
+        #   initialDelaySeconds: 15
+        #   periodSeconds: 10
+        #   tcpSocket:
+        #     port: 8765
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ho11y
+  labels:
+    app: ho11y
+spec:
+  type: ClusterIP
+  selector:
+    app: ho11y
+  ports:
+  - name: tcp-ho11y
+    port: 8765
+    targetPort: 8765
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ho11y
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  labels:
+    app: otel-collector
+spec:
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      # securityContext:
+      #   fsGroup: 1000
+      #   runAsGroup: 1000
+      #   runAsNonRoot: true
+      #   runAsUser: 1000
+      containers:
+      - name: otel-collector
+        # securityContext:
+        #   allowPrivilegeEscalation: false
+        #   capabilities:
+        #     drop:
+        #       - ALL
+        #   privileged: false
+        #   readOnlyRootFilesystem: true
+        image: otel/opentelemetry-collector-contrib:0.55.0
+        args: ["--config=/conf/otel-collector-config.yaml"]
+        ports:
+        - containerPort: 8006
+        readinessProbe:
+          periodSeconds: 5
+          tcpSocket:
+            port: 8006
+        livenessProbe:
+          periodSeconds: 5
+          tcpSocket:
+            port: 8006
+        volumeMounts:
+        - mountPath: /conf
+          name: otel-collector-config
+        resources:
+          limits:
+            memory: 256Mi
+            cpu: 125m
+          requests:
+            cpu: 70m
+            memory: 200Mi
+      volumes:
+      - name: otel-collector-config
+        configMap:
+          name: otel-collector-config
+          items:
+            - key: otel-collector-config
+              path: otel-collector-config.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector-config
+  labels:
+    app: otel-collector-config
+spec:
+  type: ClusterIP
+  selector:
+    app: otel-collector-config
+  ports:
+  - name: tcp-otel-collector-config
+    port: 8006
+    targetPort: 8006
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+data:
+  otel-collector-config: |
+    receivers:
+      fluentforward:
+        endpoint: 0.0.0.0:8006
+    processors:
+      batch:
+        timeout: 5s
+        send_batch_size: 100
+    exporters:
+      logging:
+        loglevel: debug
+      clickhouse:
+        dsn: tcp://clickhouse-server:9000/default
+        ttl_days: 3
+    service:
+      telemetry:
+        logs:
+          level: debug
+      pipelines:
+        logs:
+          receivers: [ fluentforward ]
+          processors: [ batch ]
+          exporters: [ logging, clickhouse ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickhouse
+  labels:
+    app: clickhouse
+spec:
+  selector:
+    matchLabels:
+      app: clickhouse
+  template:
+    metadata:
+      labels:
+        app: clickhouse
+    spec:
+      serviceAccountName: clickhouse
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: clickhouse
+        image: clickhouse/clickhouse-server
+        ports:
+        - containerPort: 8123 # Web UI
+        - containerPort: 9000 # TCP endpoint
+        env:
+        - name: REDIS_ADDR
+          value: "redis-cart:6379"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 128Mi
+        readinessProbe:
+          initialDelaySeconds: 15
+          tcpSocket:
+            port: 9000
+        livenessProbe:
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          tcpSocket:
+            port: 9000
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: clickhouse
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse-server
+  labels:
+    app: clickhouse
+spec:
+  type: ClusterIP
+  selector:
+    app: clickhouse
+  ports:
+  - name: tcp-clickhouse
+    port: 9000
+    targetPort: 9000
+  - name: tcp-web
+    port: 8123
+    targetPort: 8123
