@@ -27,10 +27,10 @@ spec:
               port: 80
               targetPort: 8080
               protocol: TCP
-            # - name: https-8443
-            #   port: 8443
-            #   targetPort: 8444
-            #   protocol: TCP
+            - name: https-custom
+              port: 12443
+              targetPort: 8445
+              # protocol: TCP
     ingressGateways:
     - enabled: true
       k8s:
@@ -82,8 +82,8 @@ spec:
           my_tag_header:
             header:
               name: host
-    # outboundTrafficPolicy:
-    #   mode: REGISTRY_ONLY
+    outboundTrafficPolicy:
+      mode: REGISTRY_ONLY
     enableTracing: true
     enablePrometheusMerge: true
     extensionProviders:

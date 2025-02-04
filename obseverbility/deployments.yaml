@@ -1,17 +1,5 @@
-# Copyright 2018 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
+#Ho11y
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -37,11 +25,20 @@ spec:
       containers:
       - name: ho11y
         image: public.ecr.aws/mhausenblas/ho11y:stable
+        imagePullPolicy: Always
         ports:
         - containerPort: 8765
         env:
-        - name: REDIS_ADDR
-          value: "redis-cart:6379"
+        - name: DOWNSTREAM0
+          value: http://backend0:8766"
+        - name: "DOWNSTREAM1"
+          value: http://backend1:8767"
+        - name: "OTEL_RESOURCE_ATTRIB"
+          value: "frontend"
+        - name: "OTEL_EXPORTER_OTLP_ENDPOINT"
+          value: "otel-collector:4317"
+        - name: "HO11Y_INJECT_FAILURE"
+          value: enabled"
         resources:
           requests:
             cpu: 200m
@@ -49,15 +46,15 @@ spec:
           limits:
             cpu: 300m
             memory: 128Mi
-        # readinessProbe:
-        #   initialDelaySeconds: 15
-        #   tcpSocket:
-        #     port: 8765
-        # livenessProbe:
-        #   initialDelaySeconds: 15
-        #   periodSeconds: 10
-        #   tcpSocket:
-        #     port: 8765
+        readinessProbe:
+          initialDelaySeconds: 15
+          tcpSocket:
+            port: 8765
+        livenessProbe:
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          tcpSocket:
+            port: 8765
 ---
 apiVersion: v1
 kind: Service
@@ -78,6 +75,8 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ho11y
+
+#OTEL
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -141,15 +140,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: otel-collector-config
+  name: otel-collector
   labels:
-    app: otel-collector-config
+    app: otel-collector
 spec:
   type: ClusterIP
   selector:
-    app: otel-collector-config
+    app: otel-collector
   ports:
-  - name: tcp-otel-collector-config
+  - name: tcp-otel-collector
     port: 8006
     targetPort: 8006
 
@@ -170,9 +169,15 @@ data:
     exporters:
       logging:
         loglevel: debug
+      # prometheus:
+      #   endpoint: "0.0.0.0:9292"
       clickhouse:
         dsn: tcp://clickhouse-server:9000/default
         ttl_days: 3
+      jaeger:
+        endpoint: jaeger:14250
+        tls:
+          insecure: true
     service:
       telemetry:
         logs:
@@ -181,7 +186,8 @@ data:
         logs:
           receivers: [ fluentforward ]
           processors: [ batch ]
-          exporters: [ logging, clickhouse ]
+          exporters: [ logging, clickhouse, jaeger ]
+# Clickhouse
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -211,16 +217,13 @@ spec:
         ports:
         - containerPort: 8123 # Web UI
         - containerPort: 9000 # TCP endpoint
-        env:
-        - name: REDIS_ADDR
-          value: "redis-cart:6379"
         resources:
           requests:
             cpu: 200m
             memory: 64Mi
           limits:
             cpu: 300m
-            memory: 128Mi
+            memory: 512Mi
         readinessProbe:
           initialDelaySeconds: 15
           tcpSocket:
@@ -253,3 +256,89 @@ spec:
   - name: tcp-web
     port: 8123
     targetPort: 8123
+
+# Jaeger
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  labels:
+    app: jaeger
+spec:
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      serviceAccountName: jaeger
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: jaeger
+        image: jaegertracing/all-in-one:1.35
+        # args:
+        #   - --grpc-storage-plugin.binary=/etc/jaeger-clickhouse
+        #   - --grpc-storage-plugin.configuration-file=/etc/clickhouse-plugin.config
+        ports:
+        - containerPort: 9090
+        - containerPort: 5778 # interface port
+        - containerPort: 16686 # UI
+        - containerPort: 14250 # Jaeger receives model.proto, which is OTLP over gRPC.
+        env:
+        - name: SPAN_STORAGE_TYPE
+          value: "grpc-plugin"
+        - name: COLLECTOR_OTLP_ENABLED
+          value: "true"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 128Mi
+        readinessProbe:
+          initialDelaySeconds: 15
+          tcpSocket:
+            port: 16686
+        livenessProbe:
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          tcpSocket:
+            port: 16686
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jaeger
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+  labels:
+    app: jaeger
+spec:
+  type: ClusterIP
+  selector:
+    app: jaeger
+  ports:
+  - name: tcp-9090
+    port: 9090
+    targetPort: 9090
+  - name: tcp-16686
+    port: 16686
+    targetPort: 16686
+  - name: tcp-14250
+    port: 14250
+    targetPort: 14250
+  - name: tcp-5778
+    port: 5778
+    targetPort: 5778
